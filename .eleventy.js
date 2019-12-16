@@ -39,7 +39,7 @@ const getFileType = (filename, buffer) => {
   }
 };
 
-const processImage = async img => {
+const processImage = async (img, localizedImages) => {
   let { distPath, assetPath, attribute } = config;
 
   const external = /https?:\/\/((?:[\w\d-]+\.)+[\w\d]{2,})/i;
@@ -71,9 +71,10 @@ const processImage = async img => {
         if (config.verbose) {
           console.log(`eleventy-plugin-local-images: Saving ${filename} to ${outputFilePath}`);
         }
-
+        let newPath = path.join(assetPath, hashedFilename);
+        localizedImages.set(imgPath, newPath);
         // Update the image with the new file path
-        img.setAttribute(attribute, path.join(assetPath, hashedFilename));  
+        img.setAttribute(attribute, newPath);  
       }
     } catch (error) {
       console.log(error);
@@ -86,16 +87,33 @@ const processImage = async img => {
 const grabRemoteImages = async (rawContent, outputPath) => {
   let { selector = 'img' } = config;
   let content = rawContent;
+  let localizedImages = new Map();
 
   if (outputPath.endsWith('.html')) {
     const dom = new JSDOM(content);
     const images = [...dom.window.document.querySelectorAll(selector)];
 
     if (images.length > 0) {
-      await Promise.all(images.map(i => processImage(i)));
+      await Promise.all(images.map(i => processImage(i, localizedImages)));
+
+      console.log("localized", localizedImages);
+      const metas = [...dom.window.document.querySelectorAll("meta")];
+      await Promise.all(metas.map(m => {
+        let content = m.getAttribute("content");
+        // console.log("content", content);
+        let newContent = localizedImages.get(content);
+        console.log("newcontent", newContent);
+
+        if (newContent) {
+          console.log("changed to:", newContent);
+          m.setAttribute("content", config.siteUrl + newContent);
+        }
+        return m;
+      }));
+    }
+
       content = dom.serialize();
     }
-  }
 
   return content;
 };
